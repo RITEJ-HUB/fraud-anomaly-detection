@@ -4,24 +4,46 @@ import numpy as np
 import joblib
 import os
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import IsolationForest
 
 st.set_page_config(page_title="Fraud Anomaly Detection Dashboard", page_icon="🕵️", layout="wide")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-@st.cache_data
-def load_data():
-    df = pd.read_csv(os.path.join(BASE_DIR, "scored_transactions.csv"))
-    return df
+MODEL_PATH = os.path.join(BASE_DIR, "isolation_forest_model.pkl")
+SCALER_PATH = os.path.join(BASE_DIR, "scaler.pkl")
+SCORED_PATH = os.path.join(BASE_DIR, "scored_transactions.csv")
+SAMPLE_PATH = os.path.join(BASE_DIR, "creditcard_sample.csv")
 
 @st.cache_resource
-def load_model():
-    model = joblib.load(os.path.join(BASE_DIR, "isolation_forest_model.pkl"))
-    scaler = joblib.load(os.path.join(BASE_DIR, "scaler.pkl"))
-    return model, scaler
+def get_model_and_data():
+    # If pre-trained model + scored data exist locally, use them (fast path for local dev)
+    if os.path.exists(MODEL_PATH) and os.path.exists(SCALER_PATH) and os.path.exists(SCORED_PATH):
+        model = joblib.load(MODEL_PATH)
+        scaler = joblib.load(SCALER_PATH)
+        df = pd.read_csv(SCORED_PATH)
+        return model, scaler, df
 
-df = load_data()
-model, scaler = load_model()
+    # Otherwise (e.g. on Streamlit Cloud), train on the fly from the committed sample dataset
+    df = pd.read_csv(SAMPLE_PATH)
+    scaler = StandardScaler()
+    df['Amount_scaled'] = scaler.fit_transform(df[['Amount']])
+    df['Time_scaled'] = scaler.fit_transform(df[['Time']])
+
+    feature_cols = [c for c in df.columns if c.startswith('V')] + ['Amount_scaled', 'Time_scaled']
+    X = df[feature_cols]
+    fraud_rate = df['Class'].mean()
+
+    model = IsolationForest(n_estimators=200, contamination=fraud_rate, random_state=42, n_jobs=-1)
+    model.fit(X)
+
+    raw_preds = model.predict(X)
+    df['predicted_anomaly'] = np.where(raw_preds == -1, 1, 0)
+    df['anomaly_score'] = model.decision_function(X)
+
+    return model, scaler, df
+
+model, scaler, df = get_model_and_data()
 
 st.title("🕵️ Fraud Anomaly Detection Dashboard")
 st.caption("Unsupervised anomaly detection on credit card transactions using Isolation Forest")
@@ -33,7 +55,6 @@ threshold_pct = st.sidebar.slider(
     min_value=0.05, max_value=5.0, value=float(df['predicted_anomaly'].mean() * 100), step=0.05
 )
 
-# Recompute flags live based on anomaly_score using the chosen percentile threshold
 cutoff = np.percentile(df['anomaly_score'], threshold_pct)
 df['live_flag'] = (df['anomaly_score'] <= cutoff).astype(int)
 
