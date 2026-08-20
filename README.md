@@ -2,6 +2,8 @@
 
 An unsupervised anomaly detection system for credit card fraud, built with Isolation Forest and visualized in an interactive Streamlit dashboard.
 
+**🔗 Live demo: [fraud-anomaly-detection-fmhxnkkaads29n7rktdfbt.streamlit.app](https://fraud-anomaly-detection-fmhxnkkaads29n7rktdfbt.streamlit.app)**
+
 ## Overview
 
 Fraud detection is a hard, real-world business problem: fraudulent transactions make up less than 0.2% of all activity, so traditional classification struggles without heavy labeling effort. This project takes an **unsupervised approach** — training an Isolation Forest to learn what "normal" transaction behavior looks like, then flagging anything that deviates significantly, without ever showing the model which transactions were actually fraud during training.
